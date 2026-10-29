@@ -4,7 +4,8 @@
 //! here for anything else. whatever the library has no code for stays with
 //! the interpreter.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::BTreeMap;
 use std::ffi::c_void;
 use std::path::Path;
 
@@ -25,6 +26,9 @@ pub struct Library {
     code: recomp_abi::Library,
     /// instructions the code handed to the interpreter one at a time.
     fallbacks: Cell<u64>,
+    /// how often each instruction was handed back, by address: the other
+    /// half of the interpreter traffic, beside the interpreter's own.
+    fallback_hits: RefCell<BTreeMap<u32, u64>>,
     /// the code found for addresses lately, each in a slot its address
     /// picks. a jump through a register looks its target up, which is a
     /// search through every function otherwise.
@@ -102,6 +106,7 @@ unsafe extern "C" fn interpret(ctx: *mut Context, address: u32, _opcode: u32) {
     unsafe {
         let machine = machine(ctx);
         machine.library.fallbacks.set(machine.library.fallbacks.get() + 1);
+        *machine.library.fallback_hits.borrow_mut().entry(address).or_insert(0) += 1;
         let ctx = &mut *ctx;
         load(ctx, machine.cpu);
         machine.cpu.regs[15] = address;
@@ -159,7 +164,7 @@ impl Library {
     }
 
     fn new(code: recomp_abi::Library) -> Library {
-        Library { code, fallbacks: Cell::new(0), found: Library::nothing_found() }
+        Library { code, fallbacks: Cell::new(0), fallback_hits: RefCell::new(BTreeMap::new()), found: Library::nothing_found() }
     }
 
     /// every slot of found empty, an address no code starts at in each.
@@ -182,6 +187,11 @@ impl Library {
     /// how many instructions the code has handed to the interpreter.
     pub fn fallbacks(&self) -> u64 {
         self.fallbacks.get()
+    }
+
+    /// the handed-back instructions by address, for the traffic profile.
+    pub fn fallback_profile(&self) -> BTreeMap<u32, u64> {
+        self.fallback_hits.borrow().clone()
     }
 
     /// how many functions and modules there is code for.

@@ -543,6 +543,41 @@ impl System {
         }
     }
 
+    /// the places the interpreter spent its time, the interpreter's own
+    /// traffic and the code's handed-back instructions merged, heaviest
+    /// first: what is worth lifting or overriding next.
+    pub fn fallback_report(&self) -> String {
+        let Some(traffic) = self.hints.as_ref().map(|hints| hints.traffic()) else { return String::new() };
+        let fallbacks = self.recompiled.as_ref().map(|library| library.fallback_profile()).unwrap_or_default();
+        let mut rows: BTreeMap<u32, (u64, &'static str)> = BTreeMap::new();
+        for (address, count) in traffic {
+            rows.insert(address, (count, "interpreter"));
+        }
+        for (address, count) in fallbacks {
+            match rows.get_mut(&address) {
+                Some((seen, kind)) => {
+                    *seen += count;
+                    // a place both sides ran goes down as both
+                    *kind = "interpreter+fallback";
+                }
+                None => {
+                    rows.insert(address, (count, "fallback"));
+                }
+            }
+        }
+        let mut ranked: Vec<(u64, u32, &str)> = rows.into_iter().map(|(address, (count, kind))| (count, address, kind)).collect();
+        ranked.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        let total: u64 = ranked.iter().map(|(count, _, _)| count).sum();
+        if total == 0 {
+            return String::new();
+        }
+        let mut text = format!("interpreter traffic {} instructions, heaviest places:", total);
+        for (count, address, kind) in ranked.iter().take(15) {
+            text.push_str(&format!("\n  0x{address:08X} {kind} {count}"));
+        }
+        text
+    }
+
     /// runs recompiled code from the pc up to the next thing the scheduler
     /// has to look at, when the library has code there. what it returns
     /// stands in for what one interpreted step would.
@@ -697,9 +732,7 @@ impl System {
         self.idle_interrupted(false);
         self.frames += 1;
         if self.frames.is_multiple_of(hints::SAVE_EVERY) {
-            if let Some(hints) = &mut self.hints {
-                hints.save();
-            }
+            self.save_hints();
         }
 
         // refresh the kernel's shared page so the guest's clock advances.
@@ -1272,8 +1305,21 @@ unsafe fn sync_for_cpu_write(gpu: *mut (), linear_base: u32, memory: &mut Memory
 impl Drop for System {
     /// what the interpreter ran lasts past the run.
     fn drop(&mut self) {
-        if let Some(hints) = &mut self.hints {
-            hints.save();
+        self.save_hints();
+    }
+}
+
+impl System {
+    /// the hints and the traffic profile to their files, the code's own
+    /// fallbacks beside the interpreter's.
+    fn save_hints(&mut self) {
+        let Some(hints) = &mut self.hints else { return };
+        match &self.recompiled {
+            Some(library) => {
+                let fallbacks = library.fallback_profile();
+                hints.save_with_fallbacks(&fallbacks);
+            }
+            None => hints.save(),
         }
     }
 }

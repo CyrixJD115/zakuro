@@ -291,6 +291,10 @@ fn run_headless(system: &mut System, frames: u64) {
     for (thread, pc, hits) in system.hot_spots(10) {
         println!("  hot {thread:<8} 0x{pc:08X} {hits}");
     }
+    let fallbacks = system.fallback_report();
+    if !fallbacks.is_empty() {
+        println!("{fallbacks}");
+    }
 }
 
 /// a game being played.
