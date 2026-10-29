@@ -167,8 +167,11 @@ pub fn load(path: impl AsRef<std::path::Path>, mut config: Config) -> Result<Sys
                     system.recompiled = Some(library);
                     // the next 3dsrecomp build reads its hints from the
                     // installed library's place, which a linked program has
-                    // no library under, so ours go there all the same
+                    // no library under, so ours go there all the same; the
+                    // place only exists where a library was installed, make
+                    // it when it is not there
                     if let Some(dir) = recomp_abi::library_dir() {
+                        let _ = std::fs::create_dir_all(&dir);
                         let path = dir
                             .join(recomp_abi::library_name(title.program_id()))
                             .with_extension("hints");
