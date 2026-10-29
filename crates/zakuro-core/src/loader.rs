@@ -165,6 +165,15 @@ pub fn load(path: impl AsRef<std::path::Path>, mut config: Config) -> Result<Sys
                         );
                     }
                     system.recompiled = Some(library);
+                    // the next 3dsrecomp build reads its hints from the
+                    // installed library's place, which a linked program has
+                    // no library under, so ours go there all the same
+                    if let Some(dir) = recomp_abi::library_dir() {
+                        let path = dir
+                            .join(recomp_abi::library_name(title.program_id()))
+                            .with_extension("hints");
+                        system.hints = Some(crate::hints::Hints::new(&path, exheader_text(&title)));
+                    }
                 }
                 Err(error) => log::warn!("could not use the code linked in, {error}, interpreting everything"),
             }
