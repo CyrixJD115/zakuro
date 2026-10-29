@@ -114,9 +114,10 @@ pub fn run(linked: Option<Linked>) {
     };
 
     if let Some(frames) = app.options.headless {
+        let hash_at = app.options.hash_frame;
         app.start();
         if let Some(game) = &mut app.game {
-            run_headless(&mut game.system, frames);
+            run_headless(&mut game.system, frames, hash_at);
         }
         return;
     }
@@ -267,13 +268,22 @@ fn paint_test_pattern(config: Config) -> System {
     system
 }
 
-fn run_headless(system: &mut System, frames: u64) {
+fn run_headless(system: &mut System, frames: u64, hash_at: Option<u64>) {
     let start = Instant::now();
     let mut outcome = FrameOutcome::Completed;
     let mut ran = 0;
     for _ in 0..frames {
         outcome = system.run_frame();
         ran += 1;
+        if Some(ran) == hash_at {
+            // the same build on the same game gives the same picture, so
+            // two runs whose hashes disagree disagree in behavior, and a
+            // change the eyes would take a while to catch shows at once
+            use sha2::Digest;
+            let (pixels, width, height) = system.read_screen_scaled(zakuro_common::Screen::Top);
+            let hash = sha2::Sha256::digest(pixels.as_slice());
+            println!("frame {ran} top {width}x{height} sha256 {:x}", hash);
+        }
         if outcome != FrameOutcome::Completed {
             break;
         }

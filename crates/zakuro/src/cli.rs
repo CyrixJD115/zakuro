@@ -13,6 +13,10 @@ pub struct Options {
     pub scale: Option<u32>,
     /// run without a window for this many frames, then report.
     pub headless: Option<u64>,
+    /// in the headless run, hash the top screen at this frame and print
+    /// it: two runs of the same build give the same hash, so a change in
+    /// the game's behavior shows in the hash before the eyes do.
+    pub hash_frame: Option<u64>,
     pub profile: bool,
     pub new3ds: bool,
     /// skip loading a ROM entirely and just paint both screens solid colors.
@@ -47,6 +51,8 @@ options:
   --scale <n>                      window scale factor (default: 2)
   (Esc opens the menu over a game, F1 pauses, F11 goes fullscreen)
   --headless <frames>              run without a window and print a report
+  --hash-frame <n>                 with --headless, hash the top screen at
+                                   frame n and print it
   --new3ds                         emulate a New 3DS
   --profile                        collect a sampling profile and print it
   --recompiled <path>              run code 3dsrecomp built for the title, a
@@ -74,6 +80,7 @@ pub fn parse() -> Result<Options, String> {
         renderer: None,
         scale: None,
         headless: None,
+        hash_frame: None,
         profile: false,
         new3ds: false,
         test_pattern: false,
@@ -104,6 +111,14 @@ pub fn parse() -> Result<Options, String> {
             "--headless" => {
                 let value = args.next().ok_or("--headless needs a frame count")?;
                 options.headless = Some(
+                    value
+                        .parse()
+                        .map_err(|_| format!("'{value}' is not a frame count"))?,
+                );
+            }
+            "--hash-frame" => {
+                let value = args.next().ok_or("--hash-frame needs a frame count")?;
+                options.hash_frame = Some(
                     value
                         .parse()
                         .map_err(|_| format!("'{value}' is not a frame count"))?,
